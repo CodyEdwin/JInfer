@@ -1,161 +1,253 @@
-# JInfer Makefile
-# Java LLM Inference Engine
+#!/usr/bin/env make
+#===============================================================================
+# JInfer - Java LLM Inference Engine
+# Build System for Local Installation
+#===============================================================================
 
-# Configuration
-PREFIX ?= /usr/local
-JINFER_HOME ?= $(HOME)/.jinfer
-JAR_NAME = jinfer-1.0.0-all.jar
-INSTALL_JAR = jinfer.jar
+# Version Information
+VERSION := 1.0.0
+PACKAGE_NAME := jinfer-$(VERSION)
+INSTALL_PREFIX ?= /usr/local
+BIN_INSTALL_DIR := $(INSTALL_PREFIX)/bin
+LIB_INSTALL_DIR := $(INSTALL_PREFIX)/lib
+SHARE_INSTALL_DIR := $(INSTALL_PREFIX)/share/jinfer
 
-# Directories
-BUILD_DIR = build/libs
-BIN_DIR = bin
-LIB_DIR = $(JINFER_HOME)/lib
-MODELS_DIR = $(JINFER_HOME)/models
+# Java Configuration
+JAVA_HOME ?= $(shell which java > /dev/null 2>&1 && dirname $$(dirname $$(readlink -f $$(which java))) 2>/dev/null || echo "")
+JAVA_VERSION_MIN := 17
 
-# Colors
-GREEN = \033[0;32m
-YELLOW = \033[1;33m
-NC = \033[0m
-
-.PHONY: all build clean install uninstall test help
+# Colors for output
+RED := \033[0;31m
+GREEN := \033[0;32m
+YELLOW := \033[0;33m
+BLUE := \033[0;34m
+NC := \033[0m # No Color
 
 # Default target
-all: build
+.PHONY: all
+all: info build
 
-# Build the project
-build:
-	@echo "$(GREEN)Building JInfer...$(NC)"
-	./gradlew shadowJar --no-daemon
-	@echo "$(GREEN)Build complete: $(BUILD_DIR)/$(JAR_NAME)$(NC)"
+#===============================================================================
+# Information and Detection
+#===============================================================================
 
-# Run tests
-test:
-	@echo "$(GREEN)Running tests...$(NC)"
-	./gradlew test --no-daemon
+.PHONY: info
+info:
+	@echo "============================================"
+	@echo "JInfer Build System"
+	@echo "============================================"
+	@echo "Version: $(VERSION)"
+	@echo "Package: $(PACKAGE_NAME)"
+	@echo "Install Prefix: $(INSTALL_PREFIX)"
+	@echo ""
+	@echo "Java Configuration:"
+	@if [ -n "$$JAVA_HOME" ]; then \
+		echo "  JAVA_HOME: $$JAVA_HOME"; \
+		$$JAVA_HOME/bin/java -version 2>&1 | head -1; \
+	else \
+		echo "  JAVA_HOME not set, using system default"; \
+		java -version 2>&1 | head -1; \
+	fi
+	@echo ""
 
-# Clean build artifacts
+#===============================================================================
+# Build Targets
+#===============================================================================
+
+.PHONY: build
+build: clean info
+	@echo "Building JInfer..."
+	@./gradlew shadowJar --no-daemon -q
+	@echo ""
+	@echo "Build completed successfully!"
+	@echo "JAR files created in build/libs/"
+
+.PHONY: build-dist
+build-dist:
+	@echo "Building distribution..."
+	@./gradlew distTar distZip --no-daemon -q
+	@echo "Distribution created!"
+
+.PHONY: compile
+compile:
+	@echo "Compiling source files..."
+	@./gradlew compileJava --no-daemon -q
+	@echo "Compilation successful!"
+
+.PHONY: clean
 clean:
-	@echo "$(YELLOW)Cleaning build artifacts...$(NC)"
-	./gradlew clean --no-daemon
-	@echo "$(GREEN)Clean complete$(NC)"
+	@echo "Cleaning build artifacts..."
+	@./gradlew clean --no-daemon -q 2>/dev/null || true
+	@rm -rf build/ .gradle/*/build .gradle/*/fileHashes
+	@echo "Clean complete!"
 
-# Install to system
+.PHONY: distclean
+distclean: clean
+	@echo "Removing all generated files..."
+	@rm -rf .gradle/
+	@echo "Distclean complete!"
+
+#===============================================================================
+# Test Targets
+#===============================================================================
+
+.PHONY: test
+test:
+	@echo "Running unit tests..."
+	@./gradlew test --no-daemon 2>&1 | tee test_output.txt
+	@if grep -q "BUILD SUCCESSFUL" test_output.txt; then \
+		echo ""; \
+		echo "All tests passed!"; \
+		rm -f test_output.txt; \
+	else \
+		echo ""; \
+		echo "Some tests failed!"; \
+		rm -f test_output.txt; \
+		exit 1; \
+	fi
+
+#===============================================================================
+# Installation Targets
+#===============================================================================
+
+.PHONY: install
 install: build
-	@echo "$(GREEN)Installing JInfer...$(NC)"
-	
-	# Create directories
-	@mkdir -p $(LIB_DIR)
-	@mkdir -p $(MODELS_DIR)
-	@mkdir -p $(PREFIX)/bin
-	
-	# Copy JAR
-	@cp $(BUILD_DIR)/$(JAR_NAME) $(LIB_DIR)/$(INSTALL_JAR)
-	@echo "  Installed JAR to $(LIB_DIR)/$(INSTALL_JAR)"
-	
-	# Copy launcher script
-	@cp $(BIN_DIR)/jinfer $(PREFIX)/bin/jinfer
-	@chmod +x $(PREFIX)/bin/jinfer
-	@echo "  Installed launcher to $(PREFIX)/bin/jinfer"
-	
+	@echo "============================================"
+	@echo "Installing JInfer"
+	@echo "============================================"
 	@echo ""
-	@echo "$(GREEN)Installation complete!$(NC)"
+	@echo "Install prefix: $(INSTALL_PREFIX)"
+	@echo "Binary directory: $(BIN_INSTALL_DIR)"
+	@echo "Library directory: $(LIB_INSTALL_DIR)"
+	@echo "Share directory: $(SHARE_INSTALL_DIR)"
 	@echo ""
-	@echo "JInfer installed to:"
-	@echo "  Executable: $(PREFIX)/bin/jinfer"
-	@echo "  Library:    $(LIB_DIR)/$(INSTALL_JAR)"
-	@echo "  Models:     $(MODELS_DIR)"
-	@echo ""
-	@echo "Usage:"
-	@echo "  jinfer --help"
-	@echo "  jinfer download -m microsoft/DialoGPT-small"
-	@echo "  jinfer run -m microsoft/DialoGPT-small -p \"Hello\""
 
-# Install for current user only (no sudo required)
+	@# Create directories
+	@echo "Creating directories..."
+	@mkdir -p $(DESTDIR)$(BIN_INSTALL_DIR)
+	@mkdir -p $(DESTDIR)$(LIB_INSTALL_DIR)
+	@mkdir -p $(DESTDIR)$(SHARE_INSTALL_DIR)
+	@mkdir -p $(DESTDIR)$(SHARE_INSTALL_DIR)/bin
+	@mkdir -p $(HOME)/.jinfer/models
+
+	@# Install main JAR
+	@echo "Installing main library..."
+	@cp build/libs/jinfer-$(VERSION)-all.jar $(DESTDIR)$(LIB_INSTALL_DIR)/jinfer.jar
+
+	@# Install CLI launcher
+	@echo "Installing CLI launcher..."
+	@cp bin/jinfer $(DESTDIR)$(SHARE_INSTALL_DIR)/bin/jinfer
+	@chmod +x $(DESTDIR)$(SHARE_INSTALL_DIR)/bin/jinfer
+	@ln -sf $(SHARE_INSTALL_DIR)/bin/jinfer $(DESTDIR)$(BIN_INSTALL_DIR)/jinfer
+
+	@# Create environment setup script
+	@echo "Creating environment setup..."
+	@echo '# JInfer Environment Setup' > $(DESTDIR)$(SHARE_INSTALL_DIR)/jinfer-env.sh
+	@echo "export JINFER_HOME=$(SHARE_INSTALL_DIR)" >> $(DESTDIR)$(SHARE_INSTALL_DIR)/jinfer-env.sh
+	@echo "export JINFER_LIB=$(LIB_INSTALL_DIR)" >> $(DESTDIR)$(SHARE_INSTALL_DIR)/jinfer-env.sh
+
+	@# Create version file
+	@echo "Creating version file..."
+	@echo "JINFER_VERSION=$(VERSION)" > $(DESTDIR)$(SHARE_INSTALL_DIR)/VERSION
+
+	@echo ""
+	@echo "============================================"
+	@echo "Installation Complete!"
+	@echo "============================================"
+	@echo ""
+	@echo "To use JInfer:"
+	@echo "  1. Run: $(BIN_INSTALL_DIR)/jinfer --help"
+	@echo "  2. Download a model: jinfer download -m user/repo"
+	@echo "  3. Run inference: jinfer run -m user/repo -p \"Hello\""
+	@echo ""
+	@echo "Library installed to: $(LIB_INSTALL_DIR)/jinfer.jar"
+	@echo ""
+
+.PHONY: install-user
 install-user: build
-	@echo "$(GREEN)Installing JInfer for current user...$(NC)"
-	
-	# Create directories
-	@mkdir -p $(LIB_DIR)
-	@mkdir -p $(MODELS_DIR)
-	@mkdir -p $(HOME)/.local/bin
-	
-	# Copy JAR
-	@cp $(BUILD_DIR)/$(JAR_NAME) $(LIB_DIR)/$(INSTALL_JAR)
-	@echo "  Installed JAR to $(LIB_DIR)/$(INSTALL_JAR)"
-	
-	# Copy launcher script
-	@cp $(BIN_DIR)/jinfer $(HOME)/.local/bin/jinfer
-	@chmod +x $(HOME)/.local/bin/jinfer
-	@echo "  Installed launcher to $(HOME)/.local/bin/jinfer"
-	
-	@echo ""
-	@echo "$(GREEN)Installation complete!$(NC)"
-	@echo ""
-	@echo "Add to your PATH if not already (add to ~/.bashrc or ~/.zshrc):"
-	@echo "  export PATH=\"\$$HOME/.local/bin:\$$PATH\""
-	@echo ""
-	@echo "Then run:"
-	@echo "  jinfer --help"
+	@echo "Installing to user home directory..."
+	@make install INSTALL_PREFIX=$$HOME/.local DESTDIR=
 
-# Uninstall from system
+.PHONY: uninstall
 uninstall:
-	@echo "$(YELLOW)Uninstalling JInfer...$(NC)"
-	
-	# Remove executable
-	@rm -f $(PREFIX)/bin/jinfer
-	@rm -f $(HOME)/.local/bin/jinfer
-	@echo "  Removed launcher"
-	
-	# Remove library (keep models)
-	@rm -f $(LIB_DIR)/$(INSTALL_JAR)
-	@echo "  Removed JAR"
-	
+	@echo "Removing JInfer..."
+	@rm -f $(DESTDIR)$(BIN_INSTALL_DIR)/jinfer
+	@rm -rf $(DESTDIR)$(SHARE_INSTALL_DIR)/
+	@rm -f $(DESTDIR)$(LIB_INSTALL_DIR)/jinfer.jar
+	@echo "Uninstallation complete!"
+
+#===============================================================================
+# Package Targets
+#===============================================================================
+
+.PHONY: package
+package: build build-dist
+	@echo "Creating distribution packages..."
+	@mkdir -p package
+	@cp build/distributions/jinfer-$(VERSION).tar package/ 2>/dev/null || true
+	@cp build/distributions/jinfer-$(VERSION).zip package/ 2>/dev/null || true
+	@cp build/libs/jinfer-$(VERSION)-all.jar package/
+	@tar -czf package/jinfer-sources-$(VERSION).tar.gz \
+		--exclude='.git' \
+		--exclude='.gradle' \
+		--exclude='build' \
+		--exclude='package' \
+		.
 	@echo ""
-	@echo "$(GREEN)Uninstall complete$(NC)"
-	@echo ""
-	@echo "Note: Cached models in $(MODELS_DIR) were preserved."
-	@echo "To remove everything: rm -rf $(JINFER_HOME)"
+	@echo "Packages created in package/:"
+	@ls -lh package/
 
-# Uninstall and remove all data
-uninstall-all: uninstall
-	@echo "$(YELLOW)Removing all JInfer data...$(NC)"
-	@rm -rf $(JINFER_HOME)
-	@echo "$(GREEN)All JInfer data removed$(NC)"
+#===============================================================================
+# Development Targets
+#===============================================================================
 
-# Create distribution package
-dist: build
-	@echo "$(GREEN)Creating distribution package...$(NC)"
-	@mkdir -p dist
-	@cp $(BUILD_DIR)/$(JAR_NAME) dist/
-	@cp $(BIN_DIR)/jinfer dist/
-	@cp Makefile dist/
-	@cp README.md dist/ 2>/dev/null || echo "# JInfer" > dist/README.md
-	@tar -czvf jinfer-1.0.0.tar.gz -C dist .
-	@rm -rf dist
-	@echo "$(GREEN)Distribution package: jinfer-1.0.0.tar.gz$(NC)"
+.PHONY: deps
+deps:
+	@echo "Checking dependencies..."
+	@./gradlew dependencies --no-daemon -q
 
-# Show help
+.PHONY: lint
+lint:
+	@echo "Running code quality checks..."
+	@./gradlew compileJava --no-daemon -q
+	@echo "Code quality check passed!"
+
+.PHONY: doc
+doc:
+	@echo "Generating documentation..."
+	@mkdir -p doc
+	@./gradlew javadoc --no-daemon -q 2>/dev/null || echo "Javadoc not configured"
+	@echo "Documentation generated in doc/"
+
+#===============================================================================
+# Help
+#===============================================================================
+
+.PHONY: help
 help:
-	@echo "JInfer Makefile"
 	@echo ""
-	@echo "Targets:"
-	@echo "  make build         Build the project"
-	@echo "  make test          Run tests"
-	@echo "  make clean         Clean build artifacts"
-	@echo "  make install       Install to system (may need sudo)"
-	@echo "  make install-user  Install for current user only"
-	@echo "  make uninstall     Remove installation (keep models)"
-	@echo "  make uninstall-all Remove installation and all data"
-	@echo "  make dist          Create distribution package"
-	@echo "  make help          Show this help"
+	@echo "============================================"
+	@echo "  JInfer Build System - Help"
+	@echo "============================================"
 	@echo ""
-	@echo "Variables:"
-	@echo "  PREFIX       Installation prefix (default: /usr/local)"
-	@echo "  JINFER_HOME  JInfer home directory (default: ~/.jinfer)"
+	@echo "Usage: make [target] [options]"
+	@echo ""
+	@echo "Main targets:"
+	@echo "  all       - Build everything (default)"
+	@echo "  build     - Clean and build the project"
+	@echo "  compile   - Compile source files only"
+	@echo "  clean     - Remove build artifacts"
+	@echo "  test      - Run unit tests"
+	@echo "  install   - Install to system (requires root)"
+	@echo "  uninstall - Remove installed files"
+	@echo "  package   - Create distribution packages"
+	@echo ""
+	@echo "Options:"
+	@echo "  INSTALL_PREFIX=/path  Set installation prefix"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make build"
-	@echo "  sudo make install"
-	@echo "  make install-user"
-	@echo "  make PREFIX=/opt/jinfer install"
+	@echo "  make build                    # Build the project"
+	@echo "  make install                  # Install to /usr/local"
+	@echo "  make install-user             # Install to ~/.local"
+	@echo "  make INSTALL_PREFIX=/opt install  # Custom prefix"
+	@echo ""

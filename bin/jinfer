@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+#
+# JInfer - Java LLM Inference Engine Launcher
+#
+
+set -e
+
+# Configuration
+JINFER_HOME="${JINFER_HOME:-$HOME/.jinfer}"
+JINFER_JAR="${JINFER_HOME}/lib/jinfer.jar"
+JAVA_OPTS="${JINFER_JAVA_OPTS:--Xmx4g -Xms512m}"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Check if Java is installed
+check_java() {
+    if ! command -v java &> /dev/null; then
+        echo -e "${RED}Error: Java is not installed or not in PATH${NC}"
+        echo "Please install Java 17 or higher:"
+        echo "  Ubuntu/Debian: sudo apt install openjdk-17-jdk"
+        echo "  macOS: brew install openjdk@17"
+        echo "  Or download from: https://adoptium.net/"
+        exit 1
+    fi
+
+    # Check Java version
+    java_version=$(java -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
+    if [[ "$java_version" -lt 17 ]]; then
+        echo -e "${YELLOW}Warning: Java 17+ recommended (found: $java_version)${NC}"
+    fi
+}
+
+# Check if JAR exists
+check_jar() {
+    if [[ ! -f "$JINFER_JAR" ]]; then
+        echo -e "${RED}Error: JInfer JAR not found at $JINFER_JAR${NC}"
+        echo "Please run 'make install' or set JINFER_HOME correctly."
+        exit 1
+    fi
+}
+
+# Print version
+version() {
+    echo "JInfer - Java LLM Inference Engine"
+    echo "Version: 1.0.0"
+    echo "Java: $(java -version 2>&1 | head -n 1)"
+    echo "Home: $JINFER_HOME"
+}
+
+# Print help
+usage() {
+    echo "JInfer - Java LLM Inference Engine"
+    echo ""
+    echo "Usage: jinfer <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  run        Run inference with a model"
+    echo "  download   Download a model from HuggingFace"
+    echo "  list       List cached models"
+    echo "  delete     Delete a cached model"
+    echo ""
+    echo "Options:"
+    echo "  --help     Show help for a command"
+    echo "  --version  Show version information"
+    echo ""
+    echo "Examples:"
+    echo "  jinfer download -m microsoft/DialoGPT-small"
+    echo "  jinfer run -m microsoft/DialoGPT-small -p \"Hello!\""
+    echo "  jinfer list"
+    echo ""
+    echo "Environment Variables:"
+    echo "  JINFER_HOME       Installation directory (default: ~/.jinfer)"
+    echo "  JINFER_JAVA_OPTS  JVM options (default: -Xmx4g -Xms512m)"
+}
+
+# Main
+main() {
+    case "${1:-}" in
+        --version|-v)
+            check_java
+            version
+            exit 0
+            ;;
+        --help|-h|"")
+            usage
+            exit 0
+            ;;
+    esac
+
+    check_java
+    check_jar
+
+    # Run JInfer
+    exec java $JAVA_OPTS -jar "$JINFER_JAR" "$@"
+}
+
+main "$@"
